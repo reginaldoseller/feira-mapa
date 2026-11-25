@@ -106,6 +106,11 @@
             color: #ffffff;
             border-color: #087f5b;
         }
+        .btn-gps-calibrar {
+            background: #fff9db;
+            color: #78350f;
+            border-color: #f59f00;
+        }
         .btn-toggle.oculta {
             background: #343a40;
             color: #fff;
@@ -559,6 +564,8 @@
             <div class="controles-topo">
                 <button class="btn-gps" id="btn-gps" onclick="verificarPosicaoGps87m()">📍 Ler GPS</button>
                 <button class="btn-gps" id="btn-gps-watch" onclick="alternarMonitoramentoGps()">🛰️ GPS Contínuo</button>
+                <button class="btn-gps btn-gps-calibrar" id="btn-gps-calibrar" onclick="calibrarGpsNaPecaSelecionada()">🎯 Calibrar na Banca</button>
+                <button class="btn-toggle" id="btn-gps-seguir" onclick="alternarSeguirGps()">Seguir GPS: ON</button>
                 <button class="btn-toggle" id="btn-reguas" onclick="alternarReguas()">Ocultar Réguas</button>
                 <button class="btn-toggle" id="btn-legendas" onclick="alternarLegendas()">Ocultar Legendas</button>
                 <button class="btn-toggle" id="btn-referencias" onclick="alternarReferencias()">Ocultar Referências</button>
@@ -590,6 +597,11 @@
                 <button type="button" class="btn-fechar-popup" onclick="fecharPopupPeca()">✕</button>
             </div>
             <div class="popup-sub" id="popup-subtitulo">Medidas em metros</div>
+
+            <div class="campo-ref-form" style="margin-bottom: 8px;">
+                <label for="input-peca-identificador">Nº / Identificação da Banca (visível no mapa)</label>
+                <input type="text" maxlength="16" id="input-peca-identificador" placeholder="Ex.: B-01, Pastel, João" onchange="aplicarMedidasPopup()">
+            </div>
 
             <button type="button" class="btn-modo-pontos" id="btn-modo-pontos" onclick="alternarRedimensionarPorPontos()">
                 Redimensionar por pontos
@@ -721,6 +733,10 @@
         let ultimaLeituraGps = null;
         let watchGpsId = null;
         let historicoMetroSuave = [];
+        let offsetCalibracaoGpsM = 0;
+        let ultimoMetroExibidoGps = null;
+        let seguirGpsAuto = true;
+        let marcadorGpsGrupo = null;
 
         function svgMesas4() {
             return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
@@ -927,24 +943,24 @@
         // Distribuição proporcional baseada na foto (0m a 87m)
         let pecas = [
             // Faixa cinza superior (cinza_esq)
-            { id: 'p1',  tipo: 'Trailer', faixa: 'cinza_esq',    inicioM: 17.0, frenteM: 5.0,  profM: PROF_PADRAO_M },
-            { id: 'p2',  tipo: 'Frutas',  faixa: 'cinza_esq',    inicioM: 24.0, frenteM: 2.5,  profM: PROF_PADRAO_M },
-            { id: 'p3',  tipo: 'Frutas',  faixa: 'cinza_esq',    inicioM: 27.0, frenteM: 19.5, profM: PROF_PADRAO_M },
-            { id: 'p4',  tipo: 'Banca',   faixa: 'cinza_esq',    inicioM: 49.0, frenteM: 2.5,  profM: PROF_PADRAO_M },
-            { id: 'p5',  tipo: 'Banca',   faixa: 'cinza_esq',    inicioM: 52.5, frenteM: 5.0,  profM: PROF_PADRAO_M },
-            { id: 'p6',  tipo: 'Frutas',  faixa: 'cinza_esq',    inicioM: 60.5, frenteM: 14.0, profM: PROF_PADRAO_M },
-            { id: 'p7',  tipo: 'Trailer', faixa: 'cinza_esq',    inicioM: 77.0, frenteM: 9.5,  profM: PROF_PADRAO_M },
+            { id: 'p1',  cod: 'S-01', tipo: 'Trailer', faixa: 'cinza_esq',    inicioM: 17.0, frenteM: 5.0,  profM: PROF_PADRAO_M },
+            { id: 'p2',  cod: 'S-02', tipo: 'Frutas',  faixa: 'cinza_esq',    inicioM: 24.0, frenteM: 2.5,  profM: PROF_PADRAO_M },
+            { id: 'p3',  cod: 'S-03', tipo: 'Frutas',  faixa: 'cinza_esq',    inicioM: 27.0, frenteM: 19.5, profM: PROF_PADRAO_M },
+            { id: 'p4',  cod: 'S-04', tipo: 'Banca',   faixa: 'cinza_esq',    inicioM: 49.0, frenteM: 2.5,  profM: PROF_PADRAO_M },
+            { id: 'p5',  cod: 'S-05', tipo: 'Banca',   faixa: 'cinza_esq',    inicioM: 52.5, frenteM: 5.0,  profM: PROF_PADRAO_M },
+            { id: 'p6',  cod: 'S-06', tipo: 'Frutas',  faixa: 'cinza_esq',    inicioM: 60.5, frenteM: 14.0, profM: PROF_PADRAO_M },
+            { id: 'p7',  cod: 'S-07', tipo: 'Trailer', faixa: 'cinza_esq',    inicioM: 77.0, frenteM: 9.5,  profM: PROF_PADRAO_M },
 
             // Faixa cinza inferior (cinza_dir)
-            { id: 'p8',  tipo: 'Banca',   faixa: 'cinza_dir',    inicioM: 17.0, frenteM: 5.5,  profM: PROF_PADRAO_M },
-            { id: 'p9',  tipo: 'Banca',   faixa: 'cinza_dir',    inicioM: 30.5, frenteM: 3.0,  profM: PROF_PADRAO_M },
-            { id: 'p10', tipo: 'Frutas',  faixa: 'cinza_dir',    inicioM: 35.0, frenteM: 21.0, profM: PROF_PADRAO_M },
-            { id: 'p11', tipo: 'Frutas',  faixa: 'cinza_dir',    inicioM: 58.5, frenteM: 10.0, profM: PROF_PADRAO_M },
-            { id: 'p12', tipo: 'Engenho', faixa: 'cinza_dir',    inicioM: 77.0, frenteM: 5.5,  profM: PROF_PADRAO_M },
-            { id: 'p13', tipo: 'Banca',   faixa: 'cinza_dir',    inicioM: 83.5, frenteM: 3.5,  profM: PROF_PADRAO_M },
+            { id: 'p8',  cod: 'I-01', tipo: 'Banca',   faixa: 'cinza_dir',    inicioM: 17.0, frenteM: 5.5,  profM: PROF_PADRAO_M },
+            { id: 'p9',  cod: 'I-02', tipo: 'Banca',   faixa: 'cinza_dir',    inicioM: 30.5, frenteM: 3.0,  profM: PROF_PADRAO_M },
+            { id: 'p10', cod: 'I-03', tipo: 'Frutas',  faixa: 'cinza_dir',    inicioM: 35.0, frenteM: 21.0, profM: PROF_PADRAO_M },
+            { id: 'p11', cod: 'I-04', tipo: 'Frutas',  faixa: 'cinza_dir',    inicioM: 58.5, frenteM: 10.0, profM: PROF_PADRAO_M },
+            { id: 'p12', cod: 'I-05', tipo: 'Engenho', faixa: 'cinza_dir',    inicioM: 77.0, frenteM: 5.5,  profM: PROF_PADRAO_M },
+            { id: 'p13', cod: 'I-06', tipo: 'Banca',   faixa: 'cinza_dir',    inicioM: 83.5, frenteM: 3.5,  profM: PROF_PADRAO_M },
 
             // Mesas no calçadão superior próximo a 78m
-            { id: 'p14', tipo: 'Mesas4',  faixa: 'calcadao_esq', inicioM: 77.5, frenteM: 3.5,  profM: 1.5 }
+            { id: 'p14', cod: 'M-01', tipo: 'Mesas4',  faixa: 'calcadao_esq', inicioM: 77.5, frenteM: 3.5,  profM: 1.5 }
         ];
 
         // Referências conforme foto
@@ -1039,7 +1055,9 @@
             const usarSeg2 = seg2.distanciaEixoM < seg1.distanciaEixoM;
             const escolhido = usarSeg2 ? seg2 : seg1;
 
-            const metroLimitado = Math.max(0, Math.min(METROS_TRECHO, escolhido.metroNoSegmento));
+            const metroBruto = escolhido.metroNoSegmento;
+            const metroComOffset = accuracy !== null ? (metroBruto + offsetCalibracaoGpsM) : metroBruto;
+            const metroLimitado = Math.max(0, Math.min(METROS_TRECHO, metroComOffset));
             const metroEstimado = suavizarMetro(metroLimitado, accuracy);
 
             const distInicio = distanciaMetrosHaversine(lat, lng, inicio.lat, inicio.lng);
@@ -1058,6 +1076,7 @@
                 escolhido.distanciaEixoM <= toleranciaEixo;
 
             return {
+                metroBruto,
                 metroEstimado,
                 distanciaEixoM: escolhido.distanciaEixoM,
                 pontoMaisProximo,
@@ -1067,32 +1086,82 @@
         }
 
         function focarMetroNoMapa(metroReal) {
+            if (!seguirGpsAuto) return;
             const faixaGeo = obterGeometriaFaixa('cinza_esq');
             if (!faixaGeo) return;
             const xAlvoLogico = faixaGeo.x + (metroReal * PX_POR_METRO);
             const xAlvoTela = xAlvoLogico * (escalaEfetiva || 1);
-            const desejado = Math.max(0, xAlvoTela - (scrollEl.clientWidth * 0.35));
-            scrollEl.scrollTo({ left: desejado, behavior: 'smooth' });
+            const desejado = Math.max(0, xAlvoTela - (scrollEl.clientWidth * 0.45));
+            if (Math.abs(scrollEl.scrollLeft - desejado) > 24) {
+                scrollEl.scrollTo({ left: desejado, behavior: 'smooth' });
+            }
         }
 
-        function processarCoordenadaGps(latitude, longitude, accuracy, origem = 'GPS') {
+        function alternarSeguirGps() {
+            seguirGpsAuto = !seguirGpsAuto;
+            const btn = document.getElementById('btn-gps-seguir');
+            btn.classList.toggle('oculta', !seguirGpsAuto);
+            btn.textContent = seguirGpsAuto ? 'Seguir GPS: ON' : 'Seguir GPS: OFF';
+            statusEl.textContent = seguirGpsAuto
+                ? 'Centralização automática do GPS ativada.'
+                : 'Centralização automática pausada (você pode rolar livremente).';
+        }
+
+        function calibrarGpsNaPecaSelecionada() {
+            if (!ultimaLeituraGps || ultimaLeituraGps.accuracy === null) {
+                statusEl.textContent = 'Faça primeiro uma leitura real com "📍 Ler GPS" para calibrar.';
+                return;
+            }
+            const p = pecas.find(item => item.id === pecaSelecionadaId);
+            if (!p) {
+                statusEl.textContent = 'Toque primeiro na banca onde você está parado e depois clique em "🎯 Calibrar na Banca".';
+                return;
+            }
+            const centroPecaM = arredondarDecimo(p.inicioM + (p.frenteM / 2));
+            offsetCalibracaoGpsM = arredondarDecimo(centroPecaM - ultimaLeituraGps.metroBruto);
+            historicoMetroSuave = [centroPecaM];
+            ultimoMetroExibidoGps = null;
+            processarCoordenadaGps(ultimaLeituraGps.latitude, ultimaLeituraGps.longitude, ultimaLeituraGps.accuracy, 'GPS Calibrado', true);
+            statusEl.textContent = `GPS calibrado em ${p.cod || obterNomeTipo(p.tipo)} (${formatarMetro(centroPecaM)}m • ajuste ${offsetCalibracaoGpsM >= 0 ? '+' : ''}${formatarMetro(offsetCalibracaoGpsM)}m).`;
+        }
+
+        function processarCoordenadaGps(latitude, longitude, accuracy, origem = 'GPS', forcarAtualizacao = false) {
+            // No GPS contínuo, descarta leituras com erro muito alto (> 25m) se já houver uma posição válida
+            if (origem === 'GPS Contínuo' && !forcarAtualizacao && accuracy != null && accuracy > 25 && ultimoMetroExibidoGps !== null) {
+                statusEl.textContent = `[GPS Contínuo] Sinal impreciso (±${Math.round(accuracy)}m) ignorado • Mantido em ~${ultimoMetroExibidoGps.toFixed(1)}m.`;
+                return;
+            }
+
             const res = calcularPosicaoNoQuarteirao87m(latitude, longitude, accuracy);
+
+            // Zona morta de 2.0m no GPS contínuo para evitar tremedeira e rolagem infinita
+            if (origem === 'GPS Contínuo' && !forcarAtualizacao && ultimoMetroExibidoGps !== null) {
+                const deltaM = Math.abs(res.metroEstimado - ultimoMetroExibidoGps);
+                if (deltaM < 2.0) {
+                    const accTxt = accuracy != null ? `±${Math.round(accuracy)}m` : '';
+                    statusEl.textContent = `[GPS Contínuo] Estável em ~${ultimoMetroExibidoGps.toFixed(1)}m (variação ${deltaM.toFixed(1)}m < 2m • ${accTxt}).`;
+                    return;
+                }
+            }
+
             ultimaLeituraGps = { latitude, longitude, accuracy, origem, ...res };
+            ultimoMetroExibidoGps = res.metroEstimado;
 
             const mEst = res.metroEstimado.toFixed(1);
             const eixo = res.distanciaEixoM.toFixed(1);
             const accTxt = accuracy != null ? `±${Math.round(accuracy)}m` : 'Simulado';
+            const calTxt = offsetCalibracaoGpsM !== 0 ? ` • Calib: ${offsetCalibracaoGpsM >= 0 ? '+' : ''}${formatarMetro(offsetCalibracaoGpsM)}m` : '';
             const situacao = res.dentroDoTrecho
-                ? `[${origem}] No trecho 87m (~${mEst}m)`
+                ? `[${origem}] Trecho ~${mEst}m`
                 : `[${origem}] Fora do eixo (~${res.menorDist.toFixed(1)}m de ${res.pontoMaisProximo.nome})`;
 
             statusEl.textContent =
-                `${situacao} • Desvio eixo: ${eixo}m • Precisão: ${accTxt} (${latitude.toFixed(6)}, ${longitude.toFixed(6)}).`;
+                `${situacao} • Precisão: ${accTxt}${calTxt} • Desvio eixo: ${eixo}m.`;
 
             document.getElementById('sim-metro-87').value = res.metroEstimado.toFixed(1);
             document.getElementById('sim-metro-valor').textContent = `${mEst}m`;
 
-            desenharReferenciasCanvas();
+            atualizarMarcadorGpsUnico();
             if (res.dentroDoTrecho) {
                 focarMetroNoMapa(res.metroEstimado);
             }
@@ -1109,7 +1178,7 @@
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
                     const { latitude, longitude, accuracy } = pos.coords;
-                    processarCoordenadaGps(latitude, longitude, accuracy, 'GPS');
+                    processarCoordenadaGps(latitude, longitude, accuracy, 'GPS', true);
                 },
                 (err) => {
                     const msgErro = {
@@ -1188,7 +1257,7 @@
                 lng = meio.lng + (fim.lng - meio.lng) * t;
             }
 
-            processarCoordenadaGps(lat, lng, null, 'Simulação');
+            processarCoordenadaGps(lat, lng, null, 'Simulação', true);
         }
 
         const statusEl = document.getElementById('status');
@@ -1470,8 +1539,10 @@
         function sincronizarCamposPopup(p) {
             if (!p) return;
             const fimM = arredondarDecimo(p.inicioM + p.frenteM);
-            popupTitulo.textContent = `${obterNomeTipo(p.tipo)}`;
+            popupTitulo.textContent = p.cod ? `${p.cod} • ${obterNomeTipo(p.tipo)}` : `${obterNomeTipo(p.tipo)}`;
             popupSubtitulo.textContent = `${rotuloCurtoFaixa(p.faixa)} • ${formatarMetro(p.inicioM)}m a ${formatarMetro(fimM)}m (Alt: ${formatarMetro(p.profM)}m)`;
+            const inputCod = document.getElementById('input-peca-identificador');
+            if (inputCod) inputCod.value = p.cod || '';
             inputFrenteMetros.value = formatarMetro(p.frenteM);
             inputProfMetros.value = formatarMetro(p.profM);
         }
@@ -1792,8 +1863,16 @@
             return encontrada && encontrada.layer ? encontrada.layer : layerReferencias;
         }
 
-        function desenharMarcadorGpsNoMapa() {
-            if (!ultimaLeituraGps || !ultimaLeituraGps.dentroDoTrecho) return;
+        function atualizarMarcadorGpsUnico() {
+            if (marcadorGpsGrupo) {
+                marcadorGpsGrupo.destroy();
+                marcadorGpsGrupo = null;
+            }
+            if (!referenciasVisiveis || !ultimaLeituraGps || !ultimaLeituraGps.dentroDoTrecho) {
+                layerPecas.batchDraw();
+                return;
+            }
+
             const metroReal = ultimaLeituraGps.metroEstimado;
             const faixaGeo = obterGeometriaFaixa('cinza_esq');
             if (!faixaGeo) return;
@@ -1804,28 +1883,53 @@
             );
             const yRuaCentro = LAYOUT_Y.viaY + (LAYOUT_Y.viaH / 2);
 
-            const grupoGps = new Konva.Group({ name: 'marcador-gps', listening: false });
+            marcadorGpsGrupo = new Konva.Group({ name: 'marcador-gps', listening: false });
 
-            // Marca vertical centralizada na faixa da rua (faixa tracejada)
-            grupoGps.add(new Konva.Line({
-                points: [xGps, LAYOUT_Y.viaY + 2, xGps, LAYOUT_Y.viaY + LAYOUT_Y.viaH - 2],
-                stroke: '#0ca678',
-                strokeWidth: 2.5,
-                dash: [3, 2]
+            // Guia vertical discreta atravessando a rua para alinhar visualmente com as bancas de cima e de baixo
+            marcadorGpsGrupo.add(new Konva.Line({
+                points: [xGps, LAYOUT_Y.cinzaEsqY + LAYOUT_Y.cinzaEsqH - 4, xGps, LAYOUT_Y.cinzaDirY + 4],
+                stroke: '#12b886',
+                strokeWidth: 2,
+                dash: [3, 3],
+                opacity: 0.85
             }));
 
-            // Círculo de localização correndo exatamente no eixo do meio da rua
-            grupoGps.add(new Konva.Circle({
+            // Bolinha única correndo exatamente na linha tracejada do meio da rua
+            marcadorGpsGrupo.add(new Konva.Circle({
                 x: xGps,
                 y: yRuaCentro,
-                radius: 6.5,
+                radius: 7,
                 fill: '#12b886',
                 stroke: '#ffffff',
-                strokeWidth: 2
+                strokeWidth: 2.2
             }));
 
-            layerPecas.add(grupoGps);
-            grupoGps.moveToTop();
+            // Etiqueta compacta com a metragem atual sobre a rua
+            const txtM = `${metroReal.toFixed(1)}m`;
+            marcadorGpsGrupo.add(new Konva.Rect({
+                x: xGps + 9,
+                y: yRuaCentro - 7,
+                width: 34,
+                height: 14,
+                fill: '#087f5b',
+                stroke: '#ffffff',
+                strokeWidth: 1,
+                cornerRadius: 4
+            }));
+            marcadorGpsGrupo.add(new Konva.Text({
+                x: xGps + 10,
+                y: yRuaCentro - 4.5,
+                width: 32,
+                align: 'center',
+                text: txtM,
+                fontSize: 8,
+                fontStyle: 'bold',
+                fill: '#ffffff'
+            }));
+
+            layerPecas.add(marcadorGpsGrupo);
+            marcadorGpsGrupo.moveToTop();
+            layerPecas.batchDraw();
         }
 
         function desenharReferenciasCanvas() {
@@ -1922,7 +2026,7 @@
             });
 
             if (referenciasVisiveis) {
-                desenharMarcadorGpsNoMapa();
+                atualizarMarcadorGpsUnico();
             }
 
             layerReferencias.batchDraw();
@@ -1951,11 +2055,11 @@
         }
 
         function textoLegendaPeca(p) {
+            const prefixoCod = p.cod ? `[${p.cod}] ` : '';
             const compacta = pecas.length > LIMIAR_LEGENDA_COMPACTA && p.id !== pecaSelecionadaId;
-            if (compacta) return `${formatarMetro(p.frenteM)}m`;
+            if (compacta) return `${prefixoCod}${formatarMetro(p.frenteM)}m`;
             const fimM = arredondarDecimo(p.inicioM + p.frenteM);
-            const fTxt = rotuloCurtoFaixa(p.faixa);
-            return `${fTxt} • ${formatarMetro(p.inicioM)}-${formatarMetro(fimM)}m (${formatarMetro(p.frenteM)}x${formatarMetro(p.profM)}m)`;
+            return `${prefixoCod}${formatarMetro(p.inicioM)}-${formatarMetro(fimM)}m (${formatarMetro(p.frenteM)}x${formatarMetro(p.profM)}m)`;
         }
 
         function desenharConjuntoMesasComCadeiras(grupo, w, h, qtdMesas, selecionada, cores) {
@@ -2087,16 +2191,19 @@
                     listening: false
                 });
 
+                const rotuloInterno = p.cod ? `${p.cod} • ${cores.labelCurto}` : cores.labelCurto;
                 const titulo = new Konva.Text({
                     name: 'titulo',
                     x: layout.textoX,
                     y: layout.textoY,
                     width: layout.textoWidth,
                     align: 'left',
-                    text: cores.labelCurto,
+                    text: rotuloInterno,
                     fontSize: 9,
                     fontStyle: 'bold',
                     fill: '#ffffff',
+                    ellipsis: true,
+                    wrap: 'none',
                     visible: layout.textoVisivel,
                     listening: false
                 });
@@ -2115,6 +2222,34 @@
                 fill: selecionada ? '#0d6efd' : '#102a43',
                 listening: false
             });
+
+            if (p.cod) {
+                const badgeW = Math.min(w - 2, Math.max(24, (p.cod.length * 5.6) + 6));
+                grupo.add(new Konva.Rect({
+                    name: 'badge-cod-bg',
+                    x: 1,
+                    y: 1,
+                    width: badgeW,
+                    height: 11,
+                    fill: 'rgba(16, 42, 67, 0.82)',
+                    cornerRadius: 3,
+                    listening: false
+                }));
+                grupo.add(new Konva.Text({
+                    name: 'badge-cod-txt',
+                    x: 2,
+                    y: 2,
+                    width: badgeW - 2,
+                    align: 'center',
+                    text: p.cod,
+                    fontSize: 7.5,
+                    fontStyle: 'bold',
+                    fill: '#ffffff',
+                    ellipsis: true,
+                    wrap: 'none',
+                    listening: false
+                }));
+            }
 
             grupo.add(legenda);
 
@@ -2287,6 +2422,7 @@
 
             if (precisaRedesenharMesas) {
                 layerPecas.getChildren(node => node !== transformer && node !== botaoLapis).forEach(n => n.destroy());
+            marcadorGpsGrupo = null;
                 pecas.forEach(p => {
                     const grupo = criarGrupoPecaKonva(p);
                     if (grupo) layerPecas.add(grupo);
@@ -2303,6 +2439,7 @@
 
         function desenharPecasCanvas() {
             layerPecas.getChildren(node => node !== transformer && node !== botaoLapis).forEach(n => n.destroy());
+            marcadorGpsGrupo = null;
 
             pecas.forEach(p => {
                 const grupo = criarGrupoPecaKonva(p);
@@ -2310,7 +2447,7 @@
             });
 
             if (referenciasVisiveis) {
-                desenharMarcadorGpsNoMapa();
+                atualizarMarcadorGpsUnico();
             }
 
             sincronizarSelecaoVisual();
@@ -2337,8 +2474,11 @@
         }
 
         function inserirPecaNoPonto(tipo, faixaNome, inicioM, frenteM = FRENTE_PADRAO_M, profM = PROF_PADRAO_M) {
+            const numSeq = contadorPecas++;
+            const prefixo = faixaEhSuperior(faixaNome) ? 'S-' : 'I-';
             const nova = {
-                id: 'p' + (contadorPecas++),
+                id: 'p' + numSeq,
+                cod: prefixo + String(numSeq).padStart(2, '0'),
                 tipo,
                 faixa: faixaNome,
                 inicioM: Math.max(0, Math.min(METROS_TRECHO - frenteM, inicioM)),
@@ -2431,12 +2571,18 @@
             if (!p) return;
             const maxVal = campo === 'frenteM' ? METROS_TRECHO : 10;
             p[campo] = Math.max(0.1, Math.min(maxVal, arredondarDecimo(p[campo] + delta)));
-            atualizarGrupoPeca(p);
+            desenharPecasCanvas();
+            sincronizarCamposPopup(p);
         }
 
         function aplicarMedidasPopup() {
             const p = pecas.find(item => item.id === pecaSelecionadaId);
             if (!p) return;
+
+            const inputCod = document.getElementById('input-peca-identificador');
+            if (inputCod) {
+                p.cod = (inputCod.value || '').trim();
+            }
 
             const frenteBruto = parseFloat(String(inputFrenteMetros.value).replace(',', '.'));
             if (!isNaN(frenteBruto) && frenteBruto > 0) {
